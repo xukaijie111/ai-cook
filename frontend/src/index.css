@@ -109,7 +109,14 @@ th { font-weight: 600; color: #666; font-size: 13px; }
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
   margin-bottom: 16px;
+}
+
+.custom-dish-input {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 
 .error {

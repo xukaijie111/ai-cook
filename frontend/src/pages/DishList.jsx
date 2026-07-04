@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 
 export default function DishList() {
@@ -8,6 +8,9 @@ export default function DishList() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [seeding, setSeeding] = useState(false)
+  const [customDish, setCustomDish] = useState('')
+  const [adding, setAdding] = useState(false)
+  const navigate = useNavigate()
 
   const load = async () => {
     setLoading(true)
@@ -48,6 +51,29 @@ export default function DishList() {
     }
   }
 
+  const handleAddCustom = async () => {
+    const name = customDish.trim()
+    if (!name) {
+      setError('请输入菜名')
+      return
+    }
+    setAdding(true)
+    setError('')
+    try {
+      const dish = await api.createDish({ name })
+      setCustomDish('')
+      navigate(`/dishes/${dish.id}`)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleAddCustom()
+  }
+
   const filtered = dishes.filter((d) =>
     d.name.includes(search) ||
     (d.category || '').includes(search) ||
@@ -60,6 +86,18 @@ export default function DishList() {
         <button className="btn btn-primary" onClick={handleSeed} disabled={seeding}>
           {seeding ? '生成中…' : '生成 50 道火爆菜'}
         </button>
+        <div className="custom-dish-input">
+          <input
+            className="search-input"
+            placeholder="输入自定义菜名，回车添加…"
+            value={customDish}
+            onChange={(e) => setCustomDish(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <button className="btn btn-secondary" onClick={handleAddCustom} disabled={adding}>
+            {adding ? '添加中…' : '添加'}
+          </button>
+        </div>
         <input
           className="search-input"
           placeholder="搜索菜名、菜系、地区…"
