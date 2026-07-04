@@ -44,6 +44,11 @@ class PromptVersionOut(BaseModel):
     created_at: datetime
 
 
+class PromptUpdate(BaseModel):
+    content: str | None = None
+    negative_prompt: str | None = None
+
+
 class VideoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

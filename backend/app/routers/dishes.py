@@ -100,6 +100,7 @@ def update_dish(dish_id: int, payload: DishUpdate, db: Session = Depends(get_db)
 
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(dish, key, value)
+    _touch_dish(db, dish_id)
     db.commit()
     db.refresh(dish)
     count = db.query(PromptVersion).filter(PromptVersion.dish_id == dish_id).count()
@@ -163,7 +164,7 @@ async def generate_prompt(dish_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="菜品不存在")
 
     try:
-        result = await generate_prompt_for_dish(dish.name)
+        result = await generate_prompt_for_dish(dish.name, dish.category, dish.region)
     except Exception as exc:
         logger.exception("generate prompt failed")
         raise HTTPException(status_code=502, detail=str(exc)) from exc

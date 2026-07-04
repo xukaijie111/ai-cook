@@ -21,6 +21,11 @@ export default function DishDetail() {
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
+  const [copyDraft, setCopyDraft] = useState('')
+  const [copyEditing, setCopyEditing] = useState(false)
+  const [copySaving, setCopySaving] = useState(false)
+  const [promptDrafts, setPromptDrafts] = useState({})
+  const [promptSaving, setPromptSaving] = useState(null)
   const videosMapRef = useRef(videosMap)
 
   videosMapRef.current = videosMap
@@ -153,6 +158,80 @@ export default function DishDetail() {
     alert('已复制到剪贴板')
   }
 
+  const startEditCopy = () => {
+    setCopyDraft(dish.publish_copy || '')
+    setCopyEditing(true)
+  }
+
+  const saveCopy = async () => {
+    setCopySaving(true)
+    setError('')
+    try {
+      const updated = await api.updateDish(id, { publish_copy: copyDraft })
+      setDish((prev) => ({ ...prev, publish_copy: updated.publish_copy }))
+      setCopyEditing(false)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setCopySaving(false)
+    }
+  }
+
+  const getPromptDraft = (p) => promptDrafts[p.id] ?? {
+    content: p.content,
+    negative_prompt: p.negative_prompt || '',
+  }
+
+  const setPromptField = (p, field, value) => {
+    setPromptDrafts((prev) => {
+      const current = prev[p.id] ?? {
+        content: p.content,
+        negative_prompt: p.negative_prompt || '',
+      }
+      return { ...prev, [p.id]: { ...current, [field]: value } }
+    })
+  }
+
+  const initPromptDraft = (p) => {
+    if (!promptDrafts[p.id]) {
+      setPromptDrafts((prev) => ({
+        ...prev,
+        [p.id]: { content: p.content, negative_prompt: p.negative_prompt || '' },
+      }))
+    }
+  }
+
+  const savePrompt = async (promptId) => {
+    const draft = promptDrafts[promptId]
+    if (!draft?.content?.trim()) {
+      setError('正向提示词不能为空')
+      return
+    }
+    setPromptSaving(promptId)
+    setError('')
+    try {
+      const updated = await api.updatePrompt(promptId, {
+        content: draft.content,
+        negative_prompt: draft.negative_prompt || null,
+      })
+      setDish((prev) => ({
+        ...prev,
+        prompt_versions: prev.prompt_versions.map((p) =>
+          p.id === promptId ? updated : p
+        ),
+      }))
+      setPromptDrafts((prev) => {
+        const next = { ...prev }
+        delete next[promptId]
+        return next
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setPromptSaving(null)
+    }
+  }
+
   if (loading) return <p className="loading">加载中…</p>
   if (!dish) return <p className="error">菜品不存在</p>
 
@@ -174,17 +253,41 @@ export default function DishDetail() {
 
       {error && <div className="error">{error}</div>}
 
-      {dish.publish_copy && (
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0 }}>发布的文案</h3>
-            <button className="btn btn-secondary" onClick={() => copyText(dish.publish_copy)}>
-              复制
-            </button>
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <h3 style={{ margin: 0 }}>发布的文案</h3>
+          <div>
+            {!copyEditing ? (
+              <>
+                <button className="btn btn-secondary" onClick={startEditCopy}>编辑</button>
+                {dish.publish_copy && (
+                  <button className="btn btn-secondary" onClick={() => copyText(dish.publish_copy)}>复制</button>
+                )}
+              </>
+            ) : (
+              <>
+                <button className="btn btn-primary" onClick={saveCopy} disabled={copySaving}>
+                  {copySaving ? '保存中…' : '保存'}
+                </button>
+                <button className="btn btn-secondary" onClick={() => setCopyEditing(false)}>取消</button>
+              </>
+            )}
           </div>
-          <div className="copy-box" style={{ marginTop: 12 }}>{dish.publish_copy}</div>
         </div>
-      )}
+        {copyEditing ? (
+          <textarea
+            className="edit-textarea edit-textarea-lg"
+            style={{ marginTop: 12 }}
+            value={copyDraft}
+            onChange={(e) => setCopyDraft(e.target.value)}
+            placeholder="标题 + 分步说明，用于发布短视频"
+          />
+        ) : (
+          <div className="copy-box" style={{ marginTop: 12 }}>
+            {dish.publish_copy || '暂无文案，点击编辑添加'}
+          </div>
+        )}
+      </div>
 
       <div className="card">
         <h3 style={{ margin: '0 0 16px' }}>提示词版本 ({dish.prompt_versions.length})</h3>
@@ -201,7 +304,14 @@ export default function DishDetail() {
                 </span>
               </div>
               <div>
-                <button className="btn btn-secondary" onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}>
+                <button className="btn btn-secondary" onClick={() => {
+                  if (expandedId === p.id) {
+                    setExpandedId(null)
+                  } else {
+                    initPromptDraft(p)
+                    setExpandedId(p.id)
+                  }
+                }}>
                   {expandedId === p.id ? '收起' : '展开'}
                 </button>
                 <button className="btn btn-success" onClick={() => handleGenerateVideo(p.id)}>
@@ -216,16 +326,38 @@ export default function DishDetail() {
             {expandedId === p.id && (
               <div style={{ marginTop: 12 }}>
                 <p><strong>正向提示词</strong></p>
-                <div className="prompt-box">{p.content}</div>
-                {p.negative_prompt && (
-                  <>
-                    <p style={{ marginTop: 12 }}><strong>反向提示词</strong></p>
-                    <div className="prompt-box">{p.negative_prompt}</div>
-                  </>
-                )}
-                <button className="btn btn-secondary" style={{ marginTop: 8 }} onClick={() => copyText(p.content + (p.negative_prompt ? '\n\n反向提示词\n' + p.negative_prompt : ''))}>
-                  复制提示词
-                </button>
+                <textarea
+                  className="edit-textarea edit-textarea-lg"
+                  value={getPromptDraft(p).content}
+                  onChange={(e) => setPromptField(p, 'content', e.target.value)}
+                />
+                <p style={{ marginTop: 12 }}><strong>反向提示词</strong></p>
+                <textarea
+                  className="edit-textarea"
+                  value={getPromptDraft(p).negative_prompt}
+                  onChange={(e) => setPromptField(p, 'negative_prompt', e.target.value)}
+                  placeholder="可选"
+                />
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => savePrompt(p.id)}
+                    disabled={promptSaving === p.id}
+                  >
+                    {promptSaving === p.id ? '保存中…' : '保存提示词'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => copyText(
+                      getPromptDraft(p).content
+                      + (getPromptDraft(p).negative_prompt
+                        ? '\n\n反向提示词\n' + getPromptDraft(p).negative_prompt
+                        : '')
+                    )}
+                  >
+                    复制
+                  </button>
+                </div>
               </div>
             )}
 

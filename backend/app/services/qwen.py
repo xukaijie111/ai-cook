@@ -51,10 +51,19 @@ async def generate_dish_list() -> list[dict[str, str]]:
     return dishes
 
 
-async def generate_prompt_for_dish(dish_name: str) -> dict[str, str]:
+async def generate_prompt_for_dish(
+    dish_name: str,
+    category: str | None = None,
+    region: str | None = None,
+) -> dict[str, str]:
+    category_hint = ""
+    if category or region:
+        parts = [p for p in (category, region) if p]
+        category_hint = f"该菜菜系/地区：{' / '.join(parts)}，标题最后一节请用「{category or region}」。"
+
     raw = await _chat(
         GENERATE_PROMPT_SYSTEM,
-        GENERATE_PROMPT_USER.format(dish_name=dish_name),
+        GENERATE_PROMPT_USER.format(dish_name=dish_name, category_hint=category_hint),
     )
     result = _extract_json(raw)
     if not isinstance(result, dict):

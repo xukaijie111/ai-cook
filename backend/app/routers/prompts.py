@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import PromptVersion, Video
-from app.schemas import MessageResult, PromptVersionOut, VideoOut
+from app.models import Dish, PromptVersion, Video
+from app.schemas import MessageResult, PromptUpdate, PromptVersionOut, VideoOut
 from app.services.video_cleanup import remove_video
 
 router = APIRouter(prefix="/api", tags=["prompts", "videos"])
@@ -14,6 +15,31 @@ def get_prompt(prompt_id: int, db: Session = Depends(get_db)):
     prompt = db.query(PromptVersion).filter(PromptVersion.id == prompt_id).first()
     if not prompt:
         raise HTTPException(status_code=404, detail="提示词不存在")
+    return PromptVersionOut.model_validate(prompt)
+
+
+@router.patch("/prompts/{prompt_id}", response_model=PromptVersionOut)
+def update_prompt(
+    prompt_id: int, payload: PromptUpdate, db: Session = Depends(get_db)
+):
+    prompt = db.query(PromptVersion).filter(PromptVersion.id == prompt_id).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="提示词不存在")
+
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="没有可更新的字段")
+    if "content" in data and not (data["content"] or "").strip():
+        raise HTTPException(status_code=400, detail="正向提示词不能为空")
+
+    for key, value in data.items():
+        setattr(prompt, key, value)
+
+    db.query(Dish).filter(Dish.id == prompt.dish_id).update(
+        {Dish.updated_at: func.now()}
+    )
+    db.commit()
+    db.refresh(prompt)
     return PromptVersionOut.model_validate(prompt)
 
 
